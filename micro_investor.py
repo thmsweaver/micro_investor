@@ -10,14 +10,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.common.action_chains import ActionChains
 
-from . import javascript_snippets
+from utils import script_readers
 
-FIDELTY_URL = 'https://www.fidelity.com/'
-FUND_SYMBOLS = [
-    'FDEEX',
-    'FPEMX',
-    'FUSEX',
-]
+FIDELTY_BASE_URL = 'https://www.fidelity.com/'
 
 ROTH_IRA_ACCOUNT_NUMBER = \
     os.environ.get('FIDELITY_ROTH_IRA_ACCOUNT_NUMBER')
@@ -94,7 +89,7 @@ def _login(element_to_action_map, driver):
 
 
 def login(driver):
-    driver.get(FIDELTY_URL)
+    driver.get(FIDELTY_BASE_URL)
 
     element_to_action_map = OrderedDict()
     element_to_action_map['userId-input'] = {
@@ -120,74 +115,49 @@ def go_to_roth_ira_account(driver):
     # TODO: js tick?
     time.sleep(1)
 
+
+def _wait_for_js_tables(driver):
     def are_js_tables_loaded(driver):
         tabels_length = driver.execute_script(
             "return $('.p-positions-tbody').length"
         )
-        print tabels_length
         return int(tabels_length) > 1
 
     WebDriverWait(driver, 10).until(are_js_tables_loaded)
 
+
+def _get_core_position_cash(driver):
     core_position_cash = driver.execute_script(
-        javascript_snippets.GET_CORE_POSITION_CASH
+        script_readers.get_core_position_cash()
     )
-    core_position_cash = float(re.sub('[^\d\.]', '', core_position_cash))
+    return float(re.sub('[^\d\.]', '', core_position_cash))
+
+
+def _get_contribution_recommendation(driver):
+    core_position_cash = _get_core_position_cash(driver)
     days_remaining_to_contribute = get_days_remaining_to_contribute()
 
-    amount_to_contribute_today = core_position_cash / days_remaining_to_contribute
+    return core_position_cash / days_remaining_to_contribute
+
+
+def alert_contribution_recommendation(driver):
+    contribution_recommendation = _get_contribution_recommendation(driver)
+
     alert_script = (
         'alert("Young Thomas, contribute $' +
-        str(amount_to_contribute_today) +
+        str(contribution_recommendation) +
         ' today.")'
     )
     driver.execute_script(alert_script)
 
-    # try:
-    #     # waiting for element with `js` className indicates clickability
-    #     WebDriverWait(driver, 10).until(
-    #         ec.presence_of_element_located((By.CLASS_NAME, 'stock-symbol'))
-    #     )
-    # except Exception as e:
-    #     print e
 
-    # def _get_fusex():
-    #     xpath = '//span[@title="FIDELITY 500 INDEX INVESTOR CLASS"]'
+def go_to_contribution_advice(driver):
+    go_to_roth_ira_account(driver)
+    _wait_for_js_tables(driver)
 
-    #     try:
-    #         fusex = WebDriverWait(driver, 10).until(
-    #             ec.presence_of_element_located((By.XPATH, xpath))
-    #         )
-    #     except Exception as e:
-    #         print e
-
-    #     try:
-    #         fusex.click()
-    #     except Exception as e:
-    #         pass
-
-    #     try:
-    #         fusex = WebDriverWait(driver, 10).until(
-    #             ec.element_to_be_clickable((By.XPATH, xpath))
-    #         )
-    #     except Exception as e:
-    #         print e
-
-    #     try:
-    #         fusex.click()
-    #     except Exception as e:
-    #         print e
-    #         _get_fusex()
-
-    # _get_fusex()
-
-
-
-
-
-# def get_core_position_value(driver):
-
+    driver.execute_script(script_readers.open_fund_drawers())
+    alert_contribution_recommendation(driver)
 
 
 driver = webdriver.Chrome()
-go_to_roth_ira_account(driver)
+go_to_contribution_advice(driver)
